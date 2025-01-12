@@ -122,6 +122,12 @@ const format = async (data) => {
 
 const processUser = async (item) => {
     try {
+        const outfile = path.join(outdir, `${item.id}.json`);
+
+        if (fs.existsSync(outfile)) {
+            return;
+        }
+
         console.log(`Processing user ${item.id}`);
 
         const formatted = await format(item);
@@ -132,7 +138,7 @@ const processUser = async (item) => {
         }
 
         fs.writeFileSync(
-            path.join(outdir, `${item.id}.json`),
+            outfile,
             JSON.stringify(formatted, null, 2)
         );
     } catch (error) {
