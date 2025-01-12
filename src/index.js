@@ -4,13 +4,17 @@ const path = require('path');
 const cheerio = require("cheerio");
 
 const endpoint = 'https://api.tv-92.com';
-const filename = path.join(__dirname, 'users.json');
+const outdir = path.join(__dirname, 'output');
 const errorfilename = path.join(__dirname, 'error.txt');
 const limit = 10;
 
+if (!fs.existsSync(outdir)) {
+    fs.mkdirSync(outdir, { recursive: true });
+}
+
 const addError = (id) => {
     if (!fs.existsSync(errorfilename)) {
-        fs.writeFileSync(errorfilename, id);
+        fs.writeFileSync(errorfilename, id.toString());
         return;
     }
 
@@ -21,7 +25,7 @@ const addError = (id) => {
     if (!rows.includes(id))
         rows.push(id);
 
-    fs.writeFileSync(rows.join('\n'));
+    fs.writeFileSync(errorfilename, rows.join('\n'));
 }
 
 const fetchUsers = async (page = 0) => {
@@ -59,8 +63,6 @@ const fetchUsers = async (page = 0) => {
 };
 
 const fetchUser = async (id) => {
-    console.log(`Fetching user ${id}`);
-
     try {
         const options = {
             method: 'GET',
@@ -97,6 +99,8 @@ const fetchUser = async (id) => {
             password
         }
     } catch (error) {
+        console.error(error);
+
         return null;
     }
 
@@ -116,37 +120,50 @@ const format = async (data) => {
     }
 };
 
+const processUser = async (item) => {
+    try {
+        console.log(`Processing user ${item.id}`);
+
+        const formatted = await format(item);
+
+        if (formatted == null) {
+            addError(item.id);
+            return;
+        }
+
+        fs.writeFileSync(
+            path.join(outdir, `${item.id}.json`),
+            JSON.stringify(formatted, null, 2)
+        );
+    } catch (error) {
+        console.error(error);
+
+        addError(item.id);
+    }
+}
+
 const fetchAllUsers = async () => {
-    let output = [];
     let page = 0;
 
     while (true) {
         const { data, lastPage } = await fetchUsers(page);
 
-        for (const item of data) {
-            const formatted = await format(item);
-
-            if (formatted == null) {
-                addError(item.id);
-                continue;
-            }
-
-            output.push(formatted);
+        if (data.length === 0) {
+            break;
         }
+
+        await Promise.all(data.map(processUser));
 
         if (page >= lastPage) {
             break;
         }
 
         console.log(`Fetched page ${page + 1}/${lastPage}`);
-        fs.writeFileSync(filename, JSON.stringify(output, null, 2));
 
         page++;
     }
-
-    return output;
 };
 
-fetchAllUsers().then((users) => {
-    fs.writeFileSync(filename, JSON.stringify(users, null, 2));
+fetchAllUsers().then(() => {
+    process.exit(0);
 });
